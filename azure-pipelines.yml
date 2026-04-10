@@ -7,8 +7,11 @@ pool:
   name: 'SelfHostedPool'
 
 variables:
-  terraformVersion: '1.8.5'
-  azureServiceConnection: 'azure-devops-connection'
+  - group: epicbook-secrets
+  - name: terraformVersion
+    value: '1.8.5'
+  - name: azureServiceConnection
+    value: 'azure-devops-connection'
 
 steps:
   - checkout: self
@@ -50,13 +53,11 @@ steps:
       scriptLocation: 'inlineScript'
       inlineScript: |
         set -e
-
         export ARM_CLIENT_ID="$servicePrincipalId"
         export ARM_CLIENT_SECRET="$servicePrincipalKey"
         export ARM_TENANT_ID="$tenantId"
         export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-
-        echo "Using subscription: $ARM_SUBSCRIPTION_ID"
+        export TF_VAR_db_password="$(db_password)"
 
         terraform -chdir="$(Build.SourcesDirectory)" init -reconfigure
 
@@ -69,11 +70,11 @@ steps:
       scriptLocation: 'inlineScript'
       inlineScript: |
         set -e
-
         export ARM_CLIENT_ID="$servicePrincipalId"
         export ARM_CLIENT_SECRET="$servicePrincipalKey"
         export ARM_TENANT_ID="$tenantId"
         export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+        export TF_VAR_db_password="$(db_password)"
 
         terraform -chdir="$(Build.SourcesDirectory)" plan -out=tfplan
 
@@ -86,16 +87,16 @@ steps:
       scriptLocation: 'inlineScript'
       inlineScript: |
         set -e
-
         export ARM_CLIENT_ID="$servicePrincipalId"
         export ARM_CLIENT_SECRET="$servicePrincipalKey"
         export ARM_TENANT_ID="$tenantId"
         export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+        export TF_VAR_db_password="$(db_password)"
 
         terraform -chdir="$(Build.SourcesDirectory)" apply -auto-approve tfplan
 
   - task: AzureCLI@2
-    displayName: 'Capture Terraform Outputs'
+    displayName: 'Write Terraform outputs to artifact file'
     inputs:
       azureSubscription: '$(azureServiceConnection)'
       addSpnToEnvironment: true
@@ -103,23 +104,29 @@ steps:
       scriptLocation: 'inlineScript'
       inlineScript: |
         set -e
-
         export ARM_CLIENT_ID="$servicePrincipalId"
         export ARM_CLIENT_SECRET="$servicePrincipalKey"
         export ARM_TENANT_ID="$tenantId"
         export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+        export TF_VAR_db_password="$(db_password)"
 
         PUBLIC_IP=$(terraform -chdir="$(Build.SourcesDirectory)" output -raw public_ip)
         DB_HOST=$(terraform -chdir="$(Build.SourcesDirectory)" output -raw db_host)
 
-        echo "public_ip=$PUBLIC_IP"
-        echo "db_host=$DB_HOST"
+        mkdir -p "$(Build.ArtifactStagingDirectory)"
 
-        echo "##vso[task.setvariable variable=public_ip]$PUBLIC_IP"
-        echo "##vso[task.setvariable variable=db_host]$DB_HOST"
+        cat > "$(Build.ArtifactStagingDirectory)/infra-outputs.env" <<EOF
+        vmPublicIp=$PUBLIC_IP
+        db_host=$DB_HOST
+        EOF
+
+        echo "Generated infra-outputs.env:"
+        cat "$(Build.ArtifactStagingDirectory)/infra-outputs.env"
+
+  - publish: $(Build.ArtifactStagingDirectory)/infra-outputs.env
+    artifact: infra-outputs
+    displayName: 'Publish infra outputs artifact'
 
   - script: |
       echo "Terraform deployment completed."
-      echo "Public IP: $(public_ip)"
-      echo "DB Host: $(db_host)"
-    displayName: 'Show Terraform Outputs'
+    displayName: 'Finish Infra Pipeline'

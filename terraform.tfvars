@@ -6,4 +6,4 @@ public_key      = "~/.ssh/id_rsa.pub"
 db_name         = "bookstore"
 db_user         = "epicbook_user"
 
-db_password = "Demo123456!!"
+# db password will be stored as secret in azure devops
