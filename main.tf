@@ -33,7 +33,7 @@ resource "random_string" "mysql_suffix" {
 # Resource Group
 resource "azurerm_resource_group" "main" {
   name     = "epic-book-rg"
-  location = "South Africa North"
+  location = "Central india"
 
   tags = {
     Name = "${var.resource_prefix}-rg"
